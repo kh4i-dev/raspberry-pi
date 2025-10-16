@@ -8,7 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
-        .status-card, .log-card { transition: all 0.3s ease-in-out; }
+        .status-card, .log-card, .test-card { transition: all 0.3s ease-in-out; }
         .status-dot { transition: all 0.3s ease-in-out; }
         .log-item { animation: fadeIn 0.5s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
@@ -16,6 +16,12 @@
         .pulse-yellow { animation: pulse-yellow 2s infinite; }
         @keyframes pulse-blue { 0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); } 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } }
         @keyframes pulse-yellow { 0% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(234, 179, 8, 0); } 100% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0); } }
+        
+        /* Toggle Switch Styles */
+        .toggle-checkbox:checked { background-color: #22C55E; }
+        .toggle-checkbox:checked + .toggle-label { transform: translateX(100%); border-color: #22C55E; }
+        .toggle-checkbox:disabled + .toggle-label { background-color: #4B5563; cursor: not-allowed; }
+        .quick-test-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
 </head>
 <body class="bg-gray-900 text-white">
@@ -52,17 +58,46 @@
                 </div>
             </div>
 
-            <!-- HÀNG DƯỚI: LOGS -->
+            <!-- HÀNG GIỮA: LOGS -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <!-- Cột Log QR -->
                 <div class="log-card bg-gray-800 rounded-2xl shadow-lg p-6 flex flex-col" style="height: 40vh;">
                     <h2 class="text-2xl font-semibold mb-4 border-b-2 border-gray-700 pb-2 flex-shrink-0">🔍 Nhật Ký Quét Mã QR</h2>
                     <div id="qr-log-container" class="space-y-3 overflow-y-auto flex-grow pr-2"></div>
                 </div>
-                <!-- Cột Log Phân loại -->
                 <div class="log-card bg-gray-800 rounded-2xl shadow-lg p-6 flex flex-col" style="height: 40vh;">
                     <h2 class="text-2xl font-semibold mb-4 border-b-2 border-gray-700 pb-2 flex-shrink-0">📦 Nhật Ký Phân Loại & NG</h2>
                     <div id="sort-log-container" class="space-y-3 overflow-y-auto flex-grow pr-2"></div>
+                </div>
+            </div>
+
+            <!-- HÀNG DƯỚI: TEST PHẦN CỨNG -->
+            <div class="bg-gray-800 rounded-2xl shadow-lg p-6">
+                <h2 class="text-2xl font-semibold mb-4 border-b-2 border-gray-700 pb-2">⚙️ Chế Độ Vận Hành & Test</h2>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <!-- Cột chọn chế độ -->
+                    <div class="test-card bg-gray-700/50 rounded-lg p-4">
+                        <h3 class="font-semibold text-lg mb-4">Chọn chế độ</h3>
+                        <div class="space-y-3" id="mode-selector">
+                            <label class="flex items-center"><input type="radio" name="op-mode" value="normal" class="mr-2">Hoạt động bình thường (Quét QR)</label>
+                            <label class="flex items-center"><input type="radio" name="op-mode" value="sensor_test" class="mr-2">Test Cảm biến (QR vô hiệu hóa)</label>
+                        </div>
+                         <div class="flex items-center justify-between mt-6">
+                            <label for="camera-toggle">Gửi ảnh từ Camera</label>
+                            <div class="relative inline-block w-10 mr-2 align-middle select-none">
+                                <input type="checkbox" id="camera-toggle" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                                <label for="camera-toggle" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-600 cursor-pointer"></label>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Cột điều khiển và test -->
+                    <div class="test-card bg-gray-700/50 rounded-lg p-4">
+                        <h3 class="font-semibold text-lg mb-4">Test Nhanh Chu Trình Đẩy</h3>
+                        <div id="quick-test-panel" class="flex flex-col space-y-3">
+                            <button data-lane="0" class="quick-test-btn bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors">Kích hoạt Chu trình 1</button>
+                            <button data-lane="1" class="quick-test-btn bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors">Kích hoạt Chu trình 2</button>
+                            <button data-lane="2" class="quick-test-btn bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors">Kích hoạt Chu trình 3</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </main>
@@ -76,60 +111,37 @@
         const cameraImage = document.getElementById('camera-image');
         const qrResult = document.getElementById('qr-result');
         const resetButton = document.getElementById('reset-button');
-        
-        const initialLanes = [
-            { name: "Loại 1", icon: "🥇" },
-            { name: "Loại 2", icon: "🥈" },
-            { name: "Loại 3", icon: "🥉" }
-        ];
+        const cameraToggle = document.getElementById('camera-toggle');
+        const modeSelector = document.getElementById('mode-selector');
+        const quickTestButtons = document.querySelectorAll('.quick-test-btn');
 
-        function createLaneHTML(lane, index) {
-            return `
-                <div id="lane-card-${index}" class="status-card bg-gray-700 rounded-lg p-4 border-l-4 border-gray-500">
-                    <div class="flex items-center justify-between">
-                        <h3 class="text-lg font-bold">${lane.icon} ${lane.name}</h3>
-                        <p id="lane-count-${index}" class="text-xl font-bold text-gray-300">0</p>
-                    </div>
-                    <div class="flex items-center justify-between mt-1">
-                        <p id="lane-status-${index}" class="text-gray-400 text-sm">Đang khởi tạo...</p>
-                        <div id="lane-dot-${index}" class="status-dot w-3 h-3 rounded-full bg-gray-500"></div>
-                    </div>
-                    <div class="grid grid-cols-3 gap-x-2 mt-3 pt-2 border-t border-gray-600 text-xs text-center">
-                        <div><p class="font-semibold text-gray-400">Cảm Biến</p><p id="lane-sensor-${index}" class="font-mono mt-1 text-gray-500">-</p></div>
-                        <div><p class="font-semibold text-gray-400">Piston Thu</p><p id="lane-relay-grab-${index}" class="font-mono mt-1 text-gray-500">-</p></div>
-                        <div><p class="font-semibold text-gray-400">Piston Đẩy</p><p id="lane-relay-push-${index}" class="font-mono mt-1 text-gray-500">-</p></div>
-                    </div>
-                </div>`;
+        const initialLanes = [ { name: "Loại 1", icon: "🥇" }, { name: "Loại 2", icon: "🥈" }, { name: "Loại 3", icon: "🥉" } ];
+
+        function createLaneHTML(lane, index) { 
+            return `<div id="lane-card-${index}" class="status-card bg-gray-700 rounded-lg p-4 border-l-4 border-gray-500"><div class="flex items-center justify-between"><h3 class="text-lg font-bold">${lane.icon} ${lane.name}</h3><p id="lane-count-${index}" class="text-xl font-bold text-gray-300">0</p></div><div class="flex items-center justify-between mt-1"><p id="lane-status-${index}" class="text-gray-400 text-sm">Đang khởi tạo...</p><div id="lane-dot-${index}" class="status-dot w-3 h-3 rounded-full bg-gray-500"></div></div><div class="grid grid-cols-3 gap-x-2 mt-3 pt-2 border-t border-gray-600 text-xs text-center"><div><p class="font-semibold text-gray-400">Cảm Biến</p><p id="lane-sensor-${index}" class="font-mono mt-1 text-gray-500">-</p></div><div><p class="font-semibold text-gray-400">Piston Thu</p><p id="lane-relay-grab-${index}" class="font-mono mt-1 text-gray-500">-</p></div><div><p class="font-semibold text-gray-400">Piston Đẩy</p><p id="lane-relay-push-${index}" class="font-mono mt-1 text-gray-500">-</p></div></div></div>`;
         }
-        
         function updateLaneUI(index, lane) {
             document.getElementById(`lane-count-${index}`).textContent = lane.count;
             document.getElementById(`lane-status-${index}`).textContent = lane.status;
-            
             const card = document.getElementById(`lane-card-${index}`);
             const dot = document.getElementById(`lane-dot-${index}`);
-            dot.className = 'status-dot w-3 h-3 rounded-full '; // Reset classes
-            
+            dot.className = 'status-dot w-3 h-3 rounded-full ';
             switch (lane.status) {
                 case "Sẵn sàng": card.style.borderColor = '#22C55E'; dot.classList.add('bg-green-500'); break;
                 case "Đang chờ vật...": card.style.borderColor = '#EAB308'; dot.classList.add('bg-yellow-500', 'pulse-yellow'); break;
                 case "Đang phân loại...": card.style.borderColor = '#3B82F6'; dot.classList.add('bg-blue-500', 'pulse-blue'); break;
                 default: card.style.borderColor = '#6B7280'; dot.classList.add('bg-gray-500'); break;
             }
-
             const sensorEl = document.getElementById(`lane-sensor-${index}`);
             sensorEl.textContent = lane.sensor === 0 ? "CÓ VẬT" : "Trống";
             sensorEl.className = 'font-mono mt-1 ' + (sensorEl.textContent === "CÓ VẬT" ? "font-bold text-yellow-300" : "text-gray-500");
-            
             const grabEl = document.getElementById(`lane-relay-grab-${index}`);
             grabEl.textContent = lane.relay_grab === 1 ? "BẬT" : "TẮT";
-             grabEl.className = 'font-mono mt-1 ' + (grabEl.textContent === "BẬT" ? "font-bold text-green-400" : "text-gray-500");
-
+            grabEl.className = 'font-mono mt-1 ' + (grabEl.textContent === "BẬT" ? "font-bold text-green-400" : "text-gray-500");
             const pushEl = document.getElementById(`lane-relay-push-${index}`);
             pushEl.textContent = lane.relay_push === 1 ? "BẬT" : "TẮT";
             pushEl.className = 'font-mono mt-1 ' + (pushEl.textContent === "BẬT" ? "font-bold text-red-400" : "text-gray-500");
         }
-
         function addLog(container, message) {
             const logItem = document.createElement('div');
             logItem.className = 'log-item text-sm p-2 rounded-md bg-gray-700/50';
@@ -149,6 +161,17 @@
                     connectionStatus.textContent = systemStatus === "Online" ? "● Hệ thống Online" : "● Hệ thống Offline";
                     connectionStatus.className = "text-sm font-semibold " + (systemStatus === "Online" ? "text-green-400" : "text-red-400");
                     msg.state.lanes.forEach((lane, index) => updateLaneUI(index, lane));
+                    
+                    if (msg.state.pi_config) {
+                        const config = msg.state.pi_config;
+                        cameraToggle.checked = config.camera_enabled;
+                        document.querySelector(`input[name="op-mode"][value="${config.operating_mode}"]`).checked = true;
+                        
+                        quickTestButtons.forEach(btn => {
+                            btn.disabled = (config.operating_mode !== 'normal');
+                        });
+                    }
+
                 } else if (msg.type === 'image_update') {
                     cameraImage.src = `data:image/jpeg;base64,${msg.image}`;
                 } else if (msg.type === 'log') {
@@ -172,25 +195,34 @@
                     }
                 }
             };
-
             socket.onopen = () => { connectionStatus.textContent = "● Đã kết nối WebSocket"; connectionStatus.className = "text-sm text-green-400 font-semibold"; };
             socket.onclose = () => { connectionStatus.textContent = "● Mất kết nối. Đang thử lại..."; connectionStatus.className = "text-sm text-red-400 font-semibold"; setTimeout(connectWebSocket, 3000); };
             socket.onerror = () => { connectionStatus.textContent = "● Lỗi kết nối WebSocket."; connectionStatus.className = "text-sm text-red-400 font-semibold"; };
         }
         
-        resetButton.addEventListener('click', () => {
-            if (confirm('Bạn có chắc chắn muốn reset toàn bộ bộ đếm không?')) {
-                fetch('/reset_counts', { method: 'POST' })
-                    .then(response => response.json())
-                    .then(data => { console.log('Reset command sent:', data); })
-                    .catch(error => { console.error('Error sending reset command:', error); });
-            }
+        function sendCommand(command) {
+            fetch('/test_command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(command)
+            }).catch(error => console.error('Error sending command:', error));
+        }
+
+        resetButton.addEventListener('click', () => { if (confirm('Bạn có chắc chắn muốn reset toàn bộ bộ đếm không?')) { fetch('/reset_counts', { method: 'POST' }); } });
+        cameraToggle.addEventListener('change', (e) => { sendCommand({ type: 'toggle_camera', enabled: e.target.checked }); });
+        
+        modeSelector.addEventListener('change', (e) => {
+            if (e.target.name === 'op-mode') { sendCommand({ type: 'set_mode', mode: e.target.value }); }
+        });
+        
+        quickTestButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const lane = button.getAttribute('data-lane');
+                sendCommand({ type: 'manual_cycle_trigger', lane: parseInt(lane) });
+            });
         });
 
-        document.addEventListener('DOMContentLoaded', () => {
-            lanesContainer.innerHTML = initialLanes.map(createLaneHTML).join('');
-            connectWebSocket();
-        });
+        document.addEventListener('DOMContentLoaded', () => { lanesContainer.innerHTML = initialLanes.map(createLaneHTML).join(''); connectWebSocket(); });
     </script>
 </body>
 </html>
