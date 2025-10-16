@@ -26,9 +26,10 @@
             <p class="text-gray-400 mt-2">Giám sát dây chuyền thời gian thực</p>
         </header>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <!-- CỘT TRÁI: THÔNG TIN TRỰC QUAN -->
-            <div class="flex flex-col gap-8">
+        <main class="space-y-8">
+            <!-- HÀNG TRÊN: CAMERA VÀ TRẠNG THÁI -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Cột Camera -->
                 <div class="bg-gray-800 rounded-2xl shadow-lg p-6">
                     <h2 class="text-2xl font-semibold mb-4 border-b-2 border-gray-700 pb-2">🎥 Camera Giám Sát</h2>
                     <div class="aspect-video bg-black rounded-lg overflow-hidden shadow-inner flex items-center justify-center">
@@ -36,32 +37,35 @@
                     </div>
                     <p id="qr-result" class="text-center mt-3 text-gray-400 h-6 font-mono"></p>
                 </div>
-                <div class="bg-gray-800 rounded-2xl shadow-lg p-6">
-                    <div class="flex items-center justify-between mb-4 border-b-2 border-gray-700 pb-2">
+                <!-- Cột Trạng thái Dây chuyền -->
+                <div class="bg-gray-800 rounded-2xl shadow-lg p-6 flex flex-col">
+                    <div class="flex items-center justify-between mb-4 border-b-2 border-gray-700 pb-2 flex-shrink-0">
                         <h2 class="text-2xl font-semibold">Trạng Thái Dây Chuyền</h2>
                         <div class="flex items-center gap-4">
                             <span id="connection-status" class="text-sm font-semibold text-yellow-400">● Đang kết nối...</span>
                             <button id="reset-button" class="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-lg text-sm transition-colors duration-200">
-                                Reset Bộ Đếm
+                                Reset
                             </button>
                         </div>
                     </div>
-                    <div id="lanes-container" class="space-y-4"></div>
+                    <div id="lanes-container" class="space-y-4 flex-grow overflow-y-auto pr-2"></div>
                 </div>
             </div>
 
-            <!-- CỘT PHẢI: NHẬT KÝ HOẠT ĐỘNG -->
-            <div class="flex flex-col gap-8" style="max-height: 90vh;">
-                <div class="log-card bg-gray-800 rounded-2xl shadow-lg p-6 flex flex-col h-1/3">
-                    <h2 class="text-2xl font-semibold mb-4 border-b-2 border-gray-700 pb-2">🔍 Nhật Ký Quét Mã QR</h2>
+            <!-- HÀNG DƯỚI: LOGS -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Cột Log QR -->
+                <div class="log-card bg-gray-800 rounded-2xl shadow-lg p-6 flex flex-col" style="height: 40vh;">
+                    <h2 class="text-2xl font-semibold mb-4 border-b-2 border-gray-700 pb-2 flex-shrink-0">🔍 Nhật Ký Quét Mã QR</h2>
                     <div id="qr-log-container" class="space-y-3 overflow-y-auto flex-grow pr-2"></div>
                 </div>
-                <div class="log-card bg-gray-800 rounded-2xl shadow-lg p-6 flex flex-col h-1/3">
-                    <h2 class="text-2xl font-semibold mb-4 border-b-2 border-gray-700 pb-2">📦 Nhật Ký Phân Loại & NG</h2>
+                <!-- Cột Log Phân loại -->
+                <div class="log-card bg-gray-800 rounded-2xl shadow-lg p-6 flex flex-col" style="height: 40vh;">
+                    <h2 class="text-2xl font-semibold mb-4 border-b-2 border-gray-700 pb-2 flex-shrink-0">📦 Nhật Ký Phân Loại & NG</h2>
                     <div id="sort-log-container" class="space-y-3 overflow-y-auto flex-grow pr-2"></div>
                 </div>
             </div>
-        </div>
+        </main>
     </div>
 
     <script>
