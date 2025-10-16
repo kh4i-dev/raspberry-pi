@@ -29,7 +29,6 @@
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <!-- CỘT TRÁI: THÔNG TIN TRỰC QUAN -->
             <div class="flex flex-col gap-8">
-                <!-- KHUNG CAMERA MỚI -->
                 <div class="bg-gray-800 rounded-2xl shadow-lg p-6">
                     <h2 class="text-2xl font-semibold mb-4 border-b-2 border-gray-700 pb-2">🎥 Camera Giám Sát</h2>
                     <div class="aspect-video bg-black rounded-lg overflow-hidden shadow-inner flex items-center justify-center">
@@ -37,11 +36,17 @@
                     </div>
                     <p id="qr-result" class="text-center mt-3 text-gray-400 h-6 font-mono"></p>
                 </div>
-                 <!-- KHUNG TRẠNG THÁI DÂY CHUYỀN -->
                 <div class="bg-gray-800 rounded-2xl shadow-lg p-6">
+                    <!-- TIÊU ĐỀ VÀ NÚT RESET -->
                     <div class="flex items-center justify-between mb-4 border-b-2 border-gray-700 pb-2">
                         <h2 class="text-2xl font-semibold">Trạng Thái Dây Chuyền</h2>
-                        <span id="connection-status" class="text-sm font-semibold text-yellow-400">● Đang kết nối...</span>
+                        <div class="flex items-center gap-4">
+                            <span id="connection-status" class="text-sm font-semibold text-yellow-400">● Đang kết nối...</span>
+                            <!-- NÚT RESET MỚI -->
+                            <button id="reset-button" class="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-lg text-sm transition-colors duration-200">
+                                Reset Bộ Đếm
+                            </button>
+                        </div>
                     </div>
                     <div id="lanes-container" class="space-y-4"></div>
                 </div>
@@ -73,18 +78,18 @@
         const sensorLogContainer = document.getElementById('sensor-log-container');
         const cameraImage = document.getElementById('camera-image');
         const qrResult = document.getElementById('qr-result');
+        const resetButton = document.getElementById('reset-button'); // Lấy nút reset
         
         const initialLanes = [
-            { name: "Sữa hộp", icon: "🥛" },
-            { name: "Nước ngọt", icon: "🥤" },
-            { name: "Nước suối", icon: "💧" }
+            { name: "Chai nhựa", icon: "♻️" },
+            { name: "Lon nước", icon: "🔩" },
+            { name: "Hộp sữa giấy", icon: "🥛" }
         ];
 
         function createLaneHTML(lane, index) { /* ... Giữ nguyên hàm này ... */ }
         function updateLaneUI(index, lane) { /* ... Giữ nguyên hàm này ... */ }
         function addLog(container, message) { /* ... Giữ nguyên hàm này ... */ }
         
-        // --- Các hàm createLaneHTML, updateLaneUI, addLog giữ nguyên như cũ ---
         function createLaneHTML(lane, index) {
             return `
                 <div id="lane-card-${index}" class="status-card bg-gray-700 rounded-lg p-4 border-l-4 border-gray-500">
@@ -109,7 +114,7 @@
             document.getElementById(`lane-status-${index}`).textContent = lane.status;
             const card = document.getElementById(`lane-card-${index}`);
             const dot = document.getElementById(`lane-dot-${index}`);
-            dot.className = 'status-dot w-3 h-3 rounded-full '; // Reset classes
+            dot.className = 'status-dot w-3 h-3 rounded-full ';
             switch (lane.status) {
                 case "Sẵn sàng": card.style.borderColor = '#22C55E'; dot.classList.add('bg-green-500'); break;
                 case "Đang chờ vật...": card.style.borderColor = '#EAB308'; dot.classList.add('bg-yellow-500', 'pulse-yellow'); break;
@@ -141,24 +146,14 @@
 
             socket.onmessage = (event) => {
                 const msg = JSON.parse(event.data);
-                // XỬ LÝ CẬP NHẬT TRẠNG THÁI
                 if (msg.type === 'state_update') {
                     const systemStatus = msg.state.status;
-                    if (systemStatus === "Online") {
-                        connectionStatus.textContent = "● Hệ thống Online";
-                        connectionStatus.className = "text-sm text-green-400 font-semibold";
-                    } else {
-                        connectionStatus.textContent = "● Hệ thống Offline";
-                        connectionStatus.className = "text-sm text-red-400 font-semibold";
-                    }
+                    connectionStatus.textContent = systemStatus === "Online" ? "● Hệ thống Online" : "● Hệ thống Offline";
+                    connectionStatus.className = "text-sm font-semibold " + (systemStatus === "Online" ? "text-green-400" : "text-red-400");
                     msg.state.lanes.forEach((lane, index) => updateLaneUI(index, lane));
-                } 
-                // XỬ LÝ CẬP NHẬT ẢNH MỚI
-                else if (msg.type === 'image_update') {
+                } else if (msg.type === 'image_update') {
                     cameraImage.src = `data:image/jpeg;base64,${msg.image}`;
-                }
-                // XỬ LÝ CÁC BẢN TIN LOG
-                else if (msg.type === 'log') {
+                } else if (msg.type === 'log') {
                     const { log_type, timestamp, data, name, count, status } = msg;
                     let logHtml = `<span class="font-mono text-gray-400">${timestamp}</span> | `;
                     if (log_type === 'qr') {
@@ -180,9 +175,23 @@
             };
 
             socket.onopen = () => { connectionStatus.textContent = "● Đã kết nối WebSocket"; connectionStatus.className = "text-sm text-green-400 font-semibold"; };
-            socket.onclose = () => { connectionStatus.textContent = "● Mất kết nối. Đang thử lại..."; connectionStatus.className = "text-sm text-red-400 font-semibold"; setTimeout(connectWebSocket, 3000); };
+            socket.onclose = () => { connectionStatus.textContent = "● Mất kết nối. Đang thử lại..."; connection-status.className = "text-sm text-red-400 font-semibold"; setTimeout(connectWebSocket, 3000); };
             socket.onerror = () => { connectionStatus.textContent = "● Lỗi kết nối WebSocket."; connectionStatus.className = "text-sm text-red-400 font-semibold"; };
         }
+        
+        // SỰ KIỆN CHO NÚT RESET
+        resetButton.addEventListener('click', () => {
+            if (confirm('Bạn có chắc chắn muốn reset toàn bộ bộ đếm không?')) {
+                fetch('/reset_counts', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('Reset command sent:', data);
+                    })
+                    .catch(error => {
+                        console.error('Error sending reset command:', error);
+                    });
+            }
+        });
 
         document.addEventListener('DOMContentLoaded', () => {
             lanesContainer.innerHTML = initialLanes.map(createLaneHTML).join('');
