@@ -29,7 +29,10 @@ def get_default_state():
         ],
         "pi_config": {
             "camera_enabled": True,
-            "operating_mode": "normal" # normal, sensor_test
+            "operating_mode": "normal" 
+        },
+        "timing_config": {
+            "cycle_delay": 0.3 # Đồng bộ giá trị mặc định
         }
     }
 
@@ -45,7 +48,7 @@ def load_state():
         with open(STATE_FILE, 'r') as f:
             state = json.load(f)
             if 'pi_config' not in state: state['pi_config'] = get_default_state()['pi_config']
-            # Xóa key không còn dùng
+            if 'timing_config' not in state: state['timing_config'] = get_default_state()['timing_config']
             state.pop('manual_relays', None)
             return state
     except (json.JSONDecodeError, IOError):
@@ -78,17 +81,14 @@ def index(): return render_template('index.html')
 @app.route('/update', methods=['POST'])
 def update_from_pi():
     secret_token = "pi-secret-key"
-    if request.headers.get("X-Token") != secret_token:
-        return jsonify({"status": "error", "message": "Unauthorized"}), 403
-    
+    if request.headers.get("X-Token") != secret_token: return jsonify({"status": "error", "message": "Unauthorized"}), 403
     global system_state
     data = request.get_json()
     if not data: return jsonify({"status": "error", "message": "Invalid JSON"}), 400
-    
     command_to_pi = None
     if COMMAND_QUEUE: command_to_pi = COMMAND_QUEUE.popleft()
-
     with state_lock:
+        # Cập nhật toàn bộ state từ Pi vì Pi là nguồn tin cậy duy nhất
         system_state.update(data)
         save_state(system_state)
     broadcast({"type": "state_update", "state": system_state})
@@ -129,18 +129,14 @@ def reset_counts():
 def test_command():
     command = request.get_json()
     if command and 'type' in command:
-        # Lọc bỏ các command không còn hợp lệ
-        valid_commands = ['set_mode', 'toggle_camera', 'manual_cycle_trigger']
-        if command['type'] not in valid_commands:
-            return jsonify({"status": "error", "message": "Invalid command type."}), 400
-
         COMMAND_QUEUE.append(command)
         app.logger.info(f"Command queued: {command}")
         with state_lock:
-            if command['type'] == 'set_mode':
+            if command['type'] == 'set_mode': 
                 system_state['pi_config']['operating_mode'] = command['mode']
-            elif command['type'] == 'toggle_camera':
+            elif command['type'] == 'toggle_camera': 
                 system_state['pi_config']['camera_enabled'] = command['enabled']
+            save_state(system_state)
             broadcast({"type": "state_update", "state": system_state})
         return jsonify({"status": "ok", "message": "Command queued."})
     return jsonify({"status": "error", "message": "Invalid command."}), 400
