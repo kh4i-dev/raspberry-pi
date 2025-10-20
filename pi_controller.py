@@ -9,18 +9,17 @@ import base64
 import os
 
 # --- CẤU HÌNH ---
-VPS_URL_BASE = "https://pi.kh4idev.id.vn" # <-- ĐÃ CẬP NHẬT SANG SUBDOMAIN MỚI
+VPS_URL_BASE = "https://pi.kh4idev.id.vn" 
 SECRET_TOKEN = "pi-secret-key" 
 API_URLS = {"update": f"{VPS_URL_BASE}/update", "log": f"{VPS_URL_BASE}/log", "image": f"{VPS_URL_BASE}/image_update"}
 REQUEST_HEADERS = {"X-Token": SECRET_TOKEN, "Content-Type": "application/json"}
 CAMERA_INDEX = 0
-SYNC_INTERVAL = 5 # Gửi heartbeat mỗi 5 giây
+SYNC_INTERVAL = 5
 CONFIG_FILE = 'config.json'
 
 # --- CẤU HÌNH GPIO (ĐÃ CẬP NHẬT) ---
 GPIO.setmode(GPIO.BOARD)
 GPIO.setwarnings(False)
-# Đổi tên 'grab' -> 'pull' để khớp với hình ảnh
 RELAY_PINS = { 
     0: {'push': 11, 'pull': 12}, # Piston 1 -> Relay 1 & 2
     1: {'push': 13, 'pull': 8},  # Piston 2 -> Relay 3 & 4
@@ -56,7 +55,6 @@ camera_instance = None
 
 # --- HÀM LƯU/TẢI CẤU HÌNH CỤC BỘ ---
 def load_local_config():
-    # ... (Giữ nguyên không thay đổi) ...
     global system_state
     default_delay = 0.3
     if os.path.exists(CONFIG_FILE):
@@ -75,7 +73,6 @@ def load_local_config():
         with state_lock: system_state['timing_config']['cycle_delay'] = default_delay
 
 def save_local_config():
-    # ... (Giữ nguyên không thay đổi) ...
     try:
         with state_lock:
             config_to_save = {'timing_config': system_state['timing_config']}
@@ -85,16 +82,15 @@ def save_local_config():
     except IOError as e:
         print(f"Could not write to {CONFIG_FILE}: {e}")
 
-# ... (Các hàm còn lại giữ nguyên không thay đổi) ...
+# --- HÀM TIỆN ÍCH & ĐIỀU KHIỂN ---
 def reset_all_relays_to_default():
     print("[GPIO] Resetting all relays to default state (PULL).")
     for lane_pins in RELAY_PINS.values():
         GPIO.output(lane_pins['push'], GPIO.LOW)
-        GPIO.output(lane_pins['pull'], GPIO.LOW) # Giả định PULL kích hoạt ở LOW
+        GPIO.output(lane_pins['pull'], GPIO.LOW)
 
 def send_request(url_key, data):
     try:
-        # verify=True là quan trọng để xác thực chứng chỉ HTTPS
         response = requests.post(API_URLS[url_key], json=data, headers=REQUEST_HEADERS, timeout=3, verify=True)
         return response.json()
     except requests.exceptions.RequestException: return None
@@ -110,7 +106,7 @@ def send_snapshot(frame, qr_data=""):
 
 def pulse_single_relay(lane, relay_type):
     pin = RELAY_PINS[lane][relay_type]
-    active_state = GPIO.HIGH # Giả định tất cả relay kích hoạt ở HIGH
+    active_state = GPIO.HIGH
     inactive_state = GPIO.LOW
     
     opposite_type = 'push' if relay_type == 'pull' else 'pull'
@@ -122,9 +118,8 @@ def pulse_single_relay(lane, relay_type):
     time.sleep(1)
     GPIO.output(pin, inactive_state)
     time.sleep(0.1)
-    GPIO.output(RELAY_PINS[lane]['pull'], active_state) # Trở về trạng thái PULL
+    GPIO.output(RELAY_PINS[lane]['pull'], active_state)
     print(f"[TEST] Pulse finished for Lane {lane}, Relay {relay_type}.")
-
 
 def process_command(command):
     if not command: return
@@ -140,7 +135,7 @@ def process_command(command):
             system_state['pi_config']['camera_enabled'] = command.get('enabled', True)
         elif cmd_type == 'update_timing_config':
             system_state['timing_config']['cycle_delay'] = command.get('delay', 1.0)
-            save_local_config() # Lưu thay đổi vào file
+            save_local_config()
         elif cmd_type == 'pulse_relay':
             lane, rtype = command.get('lane'), command.get('relay_type')
             if lane is not None and rtype is not None:
@@ -149,7 +144,6 @@ def process_command(command):
 def sync_to_vps_thread():
     while main_loop_running:
         with state_lock:
-            # Logic đọc trạng thái relay cần điều chỉnh cho phù hợp với phần cứng thực tế
             full_state = {
                 "lanes": [
                     {**system_state['lanes'][0], "sensor": GPIO.input(SENSOR_PINS[0]), "relay_pull": 1 if GPIO.input(RELAY_PINS[0]['pull']) == GPIO.HIGH else 0, "relay_push": 1 if GPIO.input(RELAY_PINS[0]['push']) == GPIO.HIGH else 0},
@@ -203,9 +197,25 @@ def main_control_loop():
             camera_instance.release(); camera_instance = None
         
         if mode == 'normal':
+            if not camera_instance or not camera_instance.isOpened():
+                time.sleep(1)
+                continue
             ret, frame = camera_instance.read()
-            if not ret: time.sleep(0.1); continue
-            data, _, _ = detector.detectAndDecode(frame)
+            if not ret: 
+                time.sleep(0.1)
+                continue
+            
+            # --- ĐÂY LÀ THAY ĐỔI CHÍNH ---
+            try:
+                data, _, _ = detector.detectAndDecode(frame)
+            except cv2.error as e:
+                # Bắt lỗi hiếm gặp của OpenCV và bỏ qua khung hình
+                print(f"[QR ERROR] OpenCV error: {e}. Skipping frame.")
+                data = None 
+                time.sleep(0.1)
+                continue
+            # --- KẾT THÚC THAY ĐỔI ---
+            
             if data and (data != last_qr_data or time.time() - last_qr_time > 3):
                 last_qr_data, last_qr_time = data, time.time()
                 data_upper = data.upper().strip()
