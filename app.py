@@ -7,12 +7,10 @@ from logging.handlers import RotatingFileHandler
 import os
 from flask import Flask, render_template, request, jsonify
 from flask_sock import Sock
-from collections import deque
 
 # --- CẤU HÌNH ---
 STATE_FILE = 'dashboard_state.json'
-COMMAND_QUEUE = deque(maxlen=10)
-PI_TIMEOUT = 15 # Số giây trước khi coi Pi là offline
+PI_TIMEOUT = 15
 
 # --- CÀI ĐẶT LOGGING ---
 log_handler = RotatingFileHandler('dashboard.log', maxBytes=5*1024*1024, backupCount=2)
@@ -22,14 +20,13 @@ log_handler.setFormatter(log_formatter)
 # --- HÀM LƯU/TẢI TRẠNG THÁI ---
 def get_default_state():
     return {
-        "status": "Offline", # Trạng thái ban đầu luôn là Offline
+        "status": "Offline",
         "lanes": [
-            {"name": "Loại 1", "status": "Chưa kết nối", "count": 0, "sensor": 1, "relay_grab": 1, "relay_push": 0},
-            {"name": "Loại 2", "status": "Chưa kết nối", "count": 0, "sensor": 1, "relay_grab": 1, "relay_push": 0},
-            {"name": "Loại 3", "status": "Chưa kết nối", "count": 0, "sensor": 1, "relay_grab": 1, "relay_push": 0}
+            {"name": "Loại 1", "status": "Chưa kết nối", "count": 0, "relay_grab": 1, "relay_push": 0},
+            {"name": "Loại 2", "status": "Chưa kết nối", "count": 0, "relay_grab": 1, "relay_push": 0},
+            {"name": "Loại 3", "status": "Chưa kết nối", "count": 0, "relay_grab": 1, "relay_push": 0}
         ],
-        "pi_config": { "camera_enabled": True, "operating_mode": "normal" },
-        "timing_config": { "cycle_delay": 1.0 }
+        "timing_config": { "cycle_delay": 0.3 }
     }
 
 def save_state(state):
@@ -41,16 +38,15 @@ def save_state(state):
 def load_state():
     if not os.path.exists(STATE_FILE):
         state = get_default_state()
-        save_state(state) # Tạo file state lần đầu
+        save_state(state)
         return state
     try:
         with open(STATE_FILE, 'r') as f:
             state = json.load(f)
-            state['status'] = 'Offline' # Luôn đặt là offline khi khởi động
+            state['status'] = 'Offline'
             for lane in state['lanes']: lane['status'] = 'Chưa kết nối'
             return state
     except (json.JSONDecodeError, IOError):
-        app.logger.error(f"Could not read/parse {STATE_FILE}. Using default state.")
         return get_default_state()
 
 # --- KHỞI TẠO BIẾN TRẠNG THÁI TỪ FILE ---
@@ -74,12 +70,11 @@ def broadcast(message):
         except Exception: connected_clients.remove(client)
 
 def check_pi_heartbeat():
-    """Luồng kiểm tra kết nối từ Pi."""
     global system_state
     while True:
         with state_lock:
             if system_state['status'] == 'Online' and (time.time() - last_pi_heartbeat > PI_TIMEOUT):
-                app.logger.warning(f"Pi timed out. Last heartbeat was {time.time() - last_pi_heartbeat:.1f}s ago.")
+                app.logger.warning(f"Pi timed out.")
                 system_state['status'] = 'Offline'
                 for lane in system_state['lanes']: lane['status'] = 'Mất kết nối'
                 save_state(system_state)
@@ -97,21 +92,16 @@ def update_from_pi():
     global system_state, last_pi_heartbeat
     data = request.get_json()
     if not data: return jsonify({"status": "error", "message": "Invalid JSON"}), 400
-    command_to_pi = None
-    if COMMAND_QUEUE: command_to_pi = COMMAND_QUEUE.popleft()
     with state_lock:
-        system_state.update(data)
-        # Nếu Pi vừa kết nối lại, cập nhật trạng thái
         if system_state['status'] != 'Online':
-             app.logger.info("Pi reconnected.")
+             app.logger.info("Pi connected.")
+        system_state.update(data)
         system_state['status'] = 'Online'
         last_pi_heartbeat = time.time()
         save_state(system_state)
     broadcast({"type": "state_update", "state": system_state})
-    return jsonify({"status": "ok", "command": command_to_pi})
+    return jsonify({"status": "ok"})
 
-# Các route còn lại (/log, /image_update, /reset_counts, /test_command, /ws) giữ nguyên
-# ... (Phần còn lại của code giống hệt phiên bản trước) ...
 @app.route('/log', methods=['POST'])
 def log_from_pi():
     secret_token = "pi-secret-key"
@@ -143,24 +133,6 @@ def reset_counts():
         broadcast({"type": "state_update", "state": system_state})
     return jsonify({"status": "ok"})
 
-@app.route('/test_command', methods=['POST'])
-def test_command():
-    command = request.get_json()
-    if command and 'type' in command:
-        COMMAND_QUEUE.append(command)
-        app.logger.info(f"Command queued: {command}")
-        with state_lock:
-            if command['type'] == 'set_mode': 
-                system_state['pi_config']['operating_mode'] = command['mode']
-            elif command['type'] == 'toggle_camera': 
-                system_state['pi_config']['camera_enabled'] = command['enabled']
-            elif command['type'] == 'update_timing_config':
-                system_state['timing_config']['cycle_delay'] = command.get('delay', 1.0)
-            save_state(system_state)
-            broadcast({"type": "state_update", "state": system_state})
-        return jsonify({"status": "ok", "message": "Command queued."})
-    return jsonify({"status": "error", "message": "Invalid command."}), 400
-
 @sock.route('/ws')
 def ws(sock):
     connected_clients.add(sock)
@@ -175,11 +147,7 @@ def ws(sock):
         connected_clients.remove(sock)
         app.logger.info(f"Client disconnected. Total: {len(connected_clients)}")
 
-
 if __name__ == '__main__':
-    # Bắt đầu luồng kiểm tra heartbeat
     threading.Thread(target=check_pi_heartbeat, daemon=True).start()
     app.logger.info("Starting Flask Dashboard Server with Pi Heartbeat Check...")
-    # Không dùng app.run() khi deploy với Gunicorn
-    # app.run(host='0.0.0.0', port=5000)
 
