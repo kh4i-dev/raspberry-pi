@@ -16,6 +16,7 @@ REQUEST_HEADERS = {"X-Token": SECRET_TOKEN, "Content-Type": "application/json"}
 CAMERA_INDEX = 0
 SYNC_INTERVAL = 5
 CONFIG_FILE = 'config.json'
+STREAMING_FPS = 10 # Số khung hình gửi mỗi giây
 
 # --- CẤU HÌNH GPIO ---
 GPIO.setmode(GPIO.BOARD)
@@ -44,7 +45,8 @@ system_state = {
 }
 state_lock = threading.Lock()
 main_loop_running = True
-camera_instance = None
+latest_frame = None
+frame_lock = threading.Lock()
 
 # --- HÀM LƯU/TẢI CẤU HÌNH CỤC BỘ ---
 def load_local_config():
@@ -80,13 +82,47 @@ def send_request(url_key, data):
 
 def send_snapshot(frame, qr_data=""):
     timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-    cv2.putText(frame, timestamp, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
-    if qr_data: cv2.putText(frame, f"QR: {qr_data}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
-    _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    # Vẽ QR data lên ảnh nếu có
+    if qr_data:
+        cv2.putText(frame, f"QR: {qr_data}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
+    
+    _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70]) # Giảm chất lượng để stream mượt hơn
     b64_string = base64.b64encode(buffer).decode('utf-8')
     send_request("image", {"image": b64_string})
 
-# --- LUỒNG XỬ LÝ CHÍNH ---
+# --- CÁC LUỒNG XỬ LÝ SONG SONG ---
+def camera_capture_thread():
+    """Luồng này chỉ có nhiệm vụ chụp ảnh liên tục từ camera."""
+    global latest_frame
+    camera = cv2.VideoCapture(CAMERA_INDEX)
+    if not camera.isOpened():
+        print("[ERROR] Cannot open camera.")
+        return
+
+    while main_loop_running:
+        ret, frame = camera.read()
+        if ret:
+            with frame_lock:
+                latest_frame = frame.copy()
+        time.sleep(1/30) # Chụp ở ~30 FPS
+    camera.release()
+    print("Camera capture thread stopped.")
+
+def video_streaming_thread():
+    """Luồng này gửi ảnh mới nhất lên server theo FPS đã định."""
+    while main_loop_running:
+        frame_to_stream = None
+        with frame_lock:
+            if latest_frame is not None:
+                frame_to_stream = latest_frame.copy()
+        
+        if frame_to_stream is not None:
+            # Gửi ảnh mà không cần thông tin QR
+            threading.Thread(target=send_snapshot, args=(frame_to_stream, ""), daemon=True).start()
+        
+        time.sleep(1 / STREAMING_FPS)
+    print("Video streaming thread stopped.")
+
 def sync_to_vps_thread():
     while main_loop_running:
         with state_lock:
@@ -112,13 +148,13 @@ def sorting_process(lane_index):
     print(f"[CYCLE] Starting for {log_name} with cycle delay: {delay}s")
     try:
         pull_pin, push_pin = RELAY_PINS[lane_index]['pull'], RELAY_PINS[lane_index]['push']
-        GPIO.output(pull_pin, GPIO.HIGH)  # Pull OFF
+        GPIO.output(pull_pin, GPIO.HIGH)
         time.sleep(0.2)
-        GPIO.output(push_pin, GPIO.LOW)   # Push ON
+        GPIO.output(push_pin, GPIO.LOW)
         time.sleep(delay)
-        GPIO.output(push_pin, GPIO.HIGH)  # Push OFF
+        GPIO.output(push_pin, GPIO.HIGH)
         time.sleep(0.2)
-        GPIO.output(pull_pin, GPIO.LOW)   # Pull ON (trở về mặc định)
+        GPIO.output(pull_pin, GPIO.LOW)
     finally:
         with state_lock:
             lane_info = system_state["lanes"][lane_index]
@@ -127,38 +163,34 @@ def sorting_process(lane_index):
             send_request("log", {"log_type": "sort", "name": log_name, "count": lane_info['count']})
     print(f"[CYCLE] Finished for {log_name}.")
 
-def main_control_loop():
-    global camera_instance
+def qr_detection_loop():
+    """Luồng này chỉ xử lý việc nhận dạng QR từ ảnh mới nhất."""
     detector = cv2.QRCodeDetector()
     last_qr_data, last_qr_time = "", 0
     LANE_MAP = {"LOAI1": 0, "LOAI2": 1, "LOAI3": 2}
     
-    camera_instance = cv2.VideoCapture(CAMERA_INDEX)
-
     while main_loop_running:
-        if not camera_instance or not camera_instance.isOpened():
-            print("Waiting for camera...")
-            time.sleep(1)
-            camera_instance = cv2.VideoCapture(CAMERA_INDEX)
-            continue
-            
-        ret, frame = camera_instance.read()
-        if not ret: 
-            time.sleep(0.1)
-            continue
+        current_frame = None
+        with frame_lock:
+            if latest_frame is not None:
+                current_frame = latest_frame.copy()
         
+        if current_frame is None:
+            time.sleep(0.2) # Chờ có ảnh
+            continue
+
         try:
-            data, _, _ = detector.detectAndDecode(frame)
+            data, _, _ = detector.detectAndDecode(current_frame)
         except cv2.error as e:
             print(f"[QR ERROR] OpenCV error: {e}. Skipping frame.")
             data = None 
-            time.sleep(0.1)
+            time.sleep(0.2)
             continue
         
         if data and (data != last_qr_data or time.time() - last_qr_time > 3):
             last_qr_data, last_qr_time = data, time.time()
             data_upper = data.upper().strip()
-            threading.Thread(target=send_snapshot, args=(frame.copy(), data_upper), daemon=True).start()
+
             if data_upper in LANE_MAP:
                 lane_index = LANE_MAP[data_upper]
                 if system_state["lanes"][lane_index]["status"] == "Sẵn sàng":
@@ -175,19 +207,33 @@ def main_control_loop():
             elif data_upper == "NG": send_request("log", {"log_type": "ng_product", "data": data_upper})
             else: send_request("log", {"log_type": "unknown_qr", "data": data_upper})
         
-        time.sleep(0.1)
+        time.sleep(0.2) # Giảm tần suất quét QR để tiết kiệm CPU
 
 # --- MAIN ---
 if __name__ == "__main__":
     try:
         load_local_config()
         reset_all_relays_to_default()
+
+        # Khởi động các luồng xử lý song song
         threading.Thread(target=sync_to_vps_thread, daemon=True).start()
-        main_control_loop()
-    except KeyboardInterrupt: print("\n🛑 Shutting down...")
+        threading.Thread(target=camera_capture_thread, daemon=True).start()
+        
+        # Chờ một chút để camera có khung hình đầu tiên
+        print("Waiting for first camera frame...")
+        time.sleep(2) 
+        
+        threading.Thread(target=video_streaming_thread, daemon=True).start()
+        
+        # Luồng chính sẽ chạy vòng lặp phát hiện QR
+        print("Starting main QR detection loop...")
+        qr_detection_loop()
+
+    except KeyboardInterrupt: 
+        print("\n🛑 Shutting down...")
     finally: 
         main_loop_running = False
-        if camera_instance: camera_instance.release()
+        time.sleep(0.5) # Cho các luồng thời gian để dừng
         GPIO.cleanup()
         print("GPIO cleaned up.")
 
