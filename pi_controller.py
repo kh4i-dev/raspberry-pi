@@ -69,14 +69,14 @@ def load_local_config():
 def reset_all_relays_to_default():
     print("[GPIO] Resetting all relays to default state (PULL ON).")
     for lane_pins in RELAY_PINS.values():
-        GPIO.output(lane_pins['push'], GPIO.LOW)
-        GPIO.output(lane_pins['pull'], GPIO.LOW)
+        GPIO.output(lane_pins['push'], GPIO.HIGH) # Push OFF (Active Low)
+        GPIO.output(lane_pins['pull'], GPIO.LOW)  # Pull ON (Active Low)
 
 def send_request(url_key, data):
     try:
         requests.post(API_URLS[url_key], json=data, headers=REQUEST_HEADERS, timeout=3, verify=True)
     except requests.exceptions.RequestException:
-        pass # Bỏ qua lỗi kết nối trong log để đỡ rối
+        pass 
 
 def send_snapshot(frame, qr_data=""):
     timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
@@ -92,9 +92,9 @@ def sync_to_vps_thread():
         with state_lock:
             full_state = {
                 "lanes": [
-                    {**system_state['lanes'][0], "sensor": GPIO.input(SENSOR_PINS[0]), "relay_grab": 1 if GPIO.input(RELAY_PINS[0]['pull']) == GPIO.LOW else 0, "relay_push": 1 if GPIO.input(RELAY_PINS[0]['push']) == GPIO.HIGH else 0},
-                    {**system_state['lanes'][1], "sensor": GPIO.input(SENSOR_PINS[1]), "relay_grab": 1 if GPIO.input(RELAY_PINS[1]['pull']) == GPIO.LOW else 0, "relay_push": 1 if GPIO.input(RELAY_PINS[1]['push']) == GPIO.HIGH else 0},
-                    {**system_state['lanes'][2], "sensor": GPIO.input(SENSOR_PINS[2]), "relay_grab": 1 if GPIO.input(RELAY_PINS[2]['pull']) == GPIO.LOW else 0, "relay_push": 1 if GPIO.input(RELAY_PINS[2]['push']) == GPIO.HIGH else 0},
+                    {**system_state['lanes'][0], "sensor": GPIO.input(SENSOR_PINS[0]), "relay_grab": 1 if GPIO.input(RELAY_PINS[0]['pull']) == GPIO.LOW else 0, "relay_push": 1 if GPIO.input(RELAY_PINS[0]['push']) == GPIO.LOW else 0},
+                    {**system_state['lanes'][1], "sensor": GPIO.input(SENSOR_PINS[1]), "relay_grab": 1 if GPIO.input(RELAY_PINS[1]['pull']) == GPIO.LOW else 0, "relay_push": 1 if GPIO.input(RELAY_PINS[1]['push']) == GPIO.LOW else 0},
+                    {**system_state['lanes'][2], "sensor": GPIO.input(SENSOR_PINS[2]), "relay_grab": 1 if GPIO.input(RELAY_PINS[2]['pull']) == GPIO.LOW else 0, "relay_push": 1 if GPIO.input(RELAY_PINS[2]['push']) == GPIO.LOW else 0},
                 ],
                 "timing_config": system_state['timing_config']
             }
@@ -112,13 +112,13 @@ def sorting_process(lane_index):
     print(f"[CYCLE] Starting for {log_name} with cycle delay: {delay}s")
     try:
         pull_pin, push_pin = RELAY_PINS[lane_index]['pull'], RELAY_PINS[lane_index]['push']
-        GPIO.output(pull_pin, GPIO.HIGH)
+        GPIO.output(pull_pin, GPIO.HIGH)  # Pull OFF
         time.sleep(0.2)
-        GPIO.output(push_pin, GPIO.HIGH)
+        GPIO.output(push_pin, GPIO.LOW)   # Push ON
         time.sleep(delay)
-        GPIO.output(push_pin, GPIO.LOW)
+        GPIO.output(push_pin, GPIO.HIGH)  # Push OFF
         time.sleep(0.2)
-        GPIO.output(pull_pin, GPIO.LOW)
+        GPIO.output(pull_pin, GPIO.LOW)   # Pull ON (trở về mặc định)
     finally:
         with state_lock:
             lane_info = system_state["lanes"][lane_index]
