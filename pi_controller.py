@@ -16,7 +16,7 @@ REQUEST_HEADERS = {"X-Token": SECRET_TOKEN, "Content-Type": "application/json"}
 CAMERA_INDEX = 0
 SYNC_INTERVAL = 5
 CONFIG_FILE = 'config.json'
-STREAMING_FPS = 10 # Số khung hình gửi mỗi giây
+STREAMING_FPS = 15 # Tăng FPS để mượt hơn
 
 # --- CẤU HÌNH GPIO ---
 GPIO.setmode(GPIO.BOARD)
@@ -76,9 +76,11 @@ def reset_all_relays_to_default():
 
 def send_request(url_key, data):
     try:
+        # Giữ verify=True vì đã có SSL hợp lệ
         requests.post(API_URLS[url_key], json=data, headers=REQUEST_HEADERS, timeout=3, verify=True)
-    except requests.exceptions.RequestException:
-        pass 
+    except requests.exceptions.RequestException as e:
+        # Thay 'pass' bằng log cảnh báo để dễ gỡ lỗi
+        print(f"[WARN] Request to {url_key} failed: {e}")
 
 def send_snapshot(frame, qr_data=""):
     timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
@@ -86,7 +88,8 @@ def send_snapshot(frame, qr_data=""):
     if qr_data:
         cv2.putText(frame, f"QR: {qr_data}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
     
-    _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70]) # Giảm chất lượng để stream mượt hơn
+    # Giảm chất lượng JPEG để stream mượt hơn
+    _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 60]) 
     b64_string = base64.b64encode(buffer).decode('utf-8')
     send_request("image", {"image": b64_string})
 
