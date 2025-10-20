@@ -80,7 +80,7 @@ def reset_all_relays_to_default():
 
 def send_request(url_key, data):
     try:
-        response = requests.post(API_URLS[url_key], json=data, headers=REQUEST_HEADERS, timeout=3, verify=True)
+        response = requests.post(API_URLS[url_key], json=data, headers=REQUEST_HEADERS, timeout=3, verify=False)
         return response.json()
     except requests.exceptions.RequestException: return None
 
