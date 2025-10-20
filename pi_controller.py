@@ -9,7 +9,8 @@ import base64
 import os
 
 # --- CẤU HÌNH ---
-VPS_URL_BASE = "https://kh4idev.id.vn" 
+VPS_URL_BASE = "https://pi.kh4idev.id.vn" 
+verify = True
 SECRET_TOKEN = "pi-secret-key" 
 API_URLS = {"update": f"{VPS_URL_BASE}/update", "log": f"{VPS_URL_BASE}/log", "image": f"{VPS_URL_BASE}/image_update"}
 REQUEST_HEADERS = {"X-Token": SECRET_TOKEN, "Content-Type": "application/json"}
